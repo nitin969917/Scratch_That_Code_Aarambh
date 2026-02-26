@@ -10,6 +10,12 @@ urlpatterns = [
     path('subject/<int:subject_id>/study/', views.study_mode, name='study_mode'),
     path('subject/<int:subject_id>/generate-quiz/', views.generate_quiz, name='generate_quiz'),
     
+    # Auth API Endpoints
+    path('api/auth/register/', views.api_register, name='api_register'),
+    path('api/auth/login/', views.api_login, name='api_login'),
+    path('api/auth/logout/', views.api_logout, name='api_logout'),
+    path('api/auth/check/', views.api_check_auth, name='api_check_auth'),
+
     # New JSON API Endpoints
     path('api/subjects/', views.api_subject_list, name='api_subject_list'),
     path('api/subjects/create/', views.api_create_subject, name='api_create_subject'),

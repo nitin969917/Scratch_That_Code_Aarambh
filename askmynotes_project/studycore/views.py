@@ -1,18 +1,77 @@
 import json
+import os
 import threading
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
 from django.contrib import messages
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.models import User
+from django.contrib.auth.decorators import login_required
 from .models import Subject, Note, ChatMessage
 
 # Create your views here.
 def dashboard(request):
     return render(request, 'index.html')
 
-# API Endpoints
+# --- Auth API Endpoints ---
+@csrf_exempt
+def api_register(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Invalid method'}, status=405)
+    try:
+        data = json.loads(request.body)
+        username = data.get('username')
+        password = data.get('password')
+        
+        if not username or not password:
+            return JsonResponse({'error': 'Username and password required'}, status=400)
+            
+        if User.objects.filter(username=username).exists():
+            return JsonResponse({'error': 'Username already exists'}, status=400)
+            
+        user = User.objects.create_user(username=username, password=password)
+        login(request, user)
+        return JsonResponse({'message': 'Registration successful', 'user': {'username': user.username}})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@csrf_exempt
+def api_login(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Invalid method'}, status=405)
+    try:
+        data = json.loads(request.body)
+        username = data.get('username')
+        password = data.get('password')
+        
+        user = authenticate(request, username=username, password=password)
+        if user is not None:
+            login(request, user)
+            return JsonResponse({'message': 'Login successful', 'user': {'username': user.username}})
+        else:
+            return JsonResponse({'error': 'Invalid credentials'}, status=401)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@csrf_exempt
+def api_logout(request):
+    if request.method == 'POST':
+        logout(request)
+        return JsonResponse({'message': 'Logged out successfully'})
+    return JsonResponse({'error': 'Invalid method'}, status=405)
+
+def api_check_auth(request):
+    if request.user.is_authenticated:
+        return JsonResponse({'authenticated': True, 'user': {'username': request.user.username}})
+    return JsonResponse({'authenticated': False}, status=401)
+
+
+# --- Core API Endpoints ---
+@login_required(login_url='/')
 def api_subject_list(request):
-    subjects = Subject.objects.all().order_by('-created_at')
+    # Only return subjects belonging to the logged-in user
+    subjects = Subject.objects.filter(user=request.user).order_by('-created_at')
     data = [{
         'id': s.id,
         'name': s.name,
@@ -23,6 +82,9 @@ def api_subject_list(request):
 
 @csrf_exempt
 def api_create_subject(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request'}, status=400)
     
@@ -32,13 +94,13 @@ def api_create_subject(request):
     except:
         name = request.POST.get('name')
         
-    if Subject.objects.count() >= 3:
+    if Subject.objects.filter(user=request.user).count() >= 3:
         return JsonResponse({'error': 'You can only create up to 3 subjects.'}, status=400)
     
     if not name:
         return JsonResponse({'error': 'Subject name is required.'}, status=400)
         
-    subject = Subject.objects.create(name=name)
+    subject = Subject.objects.create(name=name, user=request.user)
     return JsonResponse({
         'id': subject.id,
         'name': subject.name,
@@ -47,16 +109,44 @@ def api_create_subject(request):
 
 @csrf_exempt
 def api_delete_subject(request, subject_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        
     if request.method != 'DELETE' and request.method != 'POST':
         return JsonResponse({'error': 'Invalid method'}, status=405)
     
-    subject = get_object_or_404(Subject, id=subject_id)
+    # Ensure the user owns this subject
+    subject = get_object_or_404(Subject, id=subject_id, user=request.user)
+    
+    # Clean up physical files for all notes in this subject
+    for note in subject.notes.all():
+        if note.file and os.path.isfile(note.file.path):
+            try:
+                os.remove(note.file.path)
+            except Exception as e:
+                print(f"Error deleting file {note.file.path}: {e}")
+                
+    # Clean up FAISS index folder
+    from django.conf import settings
+    import shutil
+    faiss_dir = os.path.join(settings.BASE_DIR, 'faiss_indices', f"subject_{subject.id}")
+    if os.path.exists(faiss_dir):
+        try:
+            shutil.rmtree(faiss_dir)
+        except Exception as e:
+            print(f"Error deleting FAISS dir {faiss_dir}: {e}")
+
     subject.delete()
     return JsonResponse({'message': 'Subject deleted successfully'})
 
 def api_subject_notes(request, subject_id):
-    subject = get_object_or_404(Subject, id=subject_id)
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        
+    # Ensure the user owns this subject
+    subject = get_object_or_404(Subject, id=subject_id, user=request.user)
     notes = subject.notes.all().order_by('-uploaded_at')
+
     data = [{
         'id': n.id,
         'filename': n.filename,
@@ -70,7 +160,14 @@ def api_subject_notes(request, subject_id):
 
 @csrf_exempt
 def api_upload_note(request, subject_id):
-    subject = get_object_or_404(Subject, id=subject_id)
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Invalid method'}, status=405)
+        
+    # Ensure the user owns this subject
+    subject = get_object_or_404(Subject, id=subject_id, user=request.user)
     if request.method == 'POST' and request.FILES.get('file'):
         file = request.FILES['file']
         note = Note.objects.create(subject=subject, file=file)
@@ -129,7 +226,11 @@ def upload_note(request, subject_id):
     return redirect('subject_detail', subject_id=subject.id)
 
 def subject_chat_history(request, subject_id):
-    subject = get_object_or_404(Subject, id=subject_id)
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        
+    # Ensure the user owns this subject
+    subject = get_object_or_404(Subject, id=subject_id, user=request.user)
     history = ChatMessage.objects.filter(subject=subject).order_by('timestamp')
     data = []
     for msg in history:
@@ -151,10 +252,14 @@ def subject_chat_history(request, subject_id):
 
 @csrf_exempt
 def generate_quiz(request, subject_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request'}, status=400)
     
-    subject = get_object_or_404(Subject, id=subject_id)
+    # Ensure the user owns this subject
+    subject = get_object_or_404(Subject, id=subject_id, user=request.user)
     
     from .rag_engine import get_full_subject_text
     from langchain_ollama import OllamaLLM
@@ -164,9 +269,19 @@ def generate_quiz(request, subject_id):
     if not full_text.strip():
         return JsonResponse({'error': 'No notes available to generate a quiz.'}, status=400)
     
-    template = """You are a professor. Based on the following study material for the subject '{subject_name}', generate a comprehensive quiz in JSON format.
+    mcq_count = request.GET.get('mcq_count', 5)
+    short_count = request.GET.get('short_count', 3)
+
+    template = """You are a senior professor. Based on the following study material for the subject '{subject_name}', generate a comprehensive quiz in JSON format.
     
-The JSON must be a list of objects, where each object represents a question:
+CRITICAL CONSTRAINTS:
+1. Generate EXACTLY {mcq_count} Multiple Choice Questions (MCQs).
+2. Generate EXACTLY {short_count} Short-Answer Questions.
+3. ORDER: All MCQs must come first in the array, followed by all Short-Answer questions.
+4. MCQs MUST have exactly 4 options, a correct answer, and a detailed 'explanation'.
+5. Short-Answer questions MUST have a comprehensive 'answer' (model answer).
+
+JSON SCHEMA:
 {{
   "questions": [
     {{
@@ -175,7 +290,7 @@ The JSON must be a list of objects, where each object represents a question:
       "question": "Question text here?",
       "options": ["Option A", "Option B", "Option C", "Option D"],
       "answer": "Option B",
-      "explanation": "A brief explanation of why Option B is correct."
+      "explanation": "A detailed explanation of why Option B is correct."
     }},
     {{
       "id": 6,
@@ -187,11 +302,8 @@ The JSON must be a list of objects, where each object represents a question:
 }}
 
 Requirements:
-1. Exactly 5 Multiple Choice Questions (MCQs) with 4 options.
-2. Exactly 3 Short-Answer Questions.
-3. For MCQs, provide a clear 'explanation' field.
-4. For Short-Answer questions, provide a comprehensive 'answer' (model answer).
-5. Return ONLY the raw JSON string.
+- Return ONLY the raw JSON string. Do not include markdown code blocks or any other text.
+- No conversational filler.
 
 Material:
 {context}
@@ -202,7 +314,8 @@ Quiz JSON:"""
     filled_prompt = prompt.format(
         subject_name=subject.name,
         context=full_text[:15000],
-        question="" 
+        mcq_count=mcq_count,
+        short_count=short_count
     )
     
     try:
@@ -222,10 +335,14 @@ Quiz JSON:"""
 
 @csrf_exempt
 def subject_chat(request, subject_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request'}, status=400)
         
-    subject = get_object_or_404(Subject, id=subject_id)
+    # Ensure the user owns this subject
+    subject = get_object_or_404(Subject, id=subject_id, user=request.user)
     try:
         data = json.loads(request.body)
         query = data.get('query', '')

@@ -33,12 +33,71 @@ const App = () => {
   const [quizStep, setQuizStep] = useState('landing'); // landing, quiz, results
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
   const [userAnswers, setUserAnswers] = useState({});
+  const [mcqCount, setMcqCount] = useState(5);
+  const [shortCount, setShortCount] = useState(3);
+
+  const [authState, setAuthState] = useState('loading'); // loading, unauthenticated, authenticated
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authMode, setAuthMode] = useState('login'); // login, register
+  const [authError, setAuthError] = useState(null);
+  const [credentials, setCredentials] = useState({ username: '', password: '' });
 
   const chatEndRef = useRef(null);
 
   useEffect(() => {
-    fetchSubjects();
+    checkAuthentication();
   }, []);
+
+  const checkAuthentication = async () => {
+    try {
+      const res = await api.checkAuth();
+      if (res.data.authenticated) {
+        setAuthState('authenticated');
+        setCurrentUser(res.data.user);
+        fetchSubjects();
+      } else {
+        setAuthState('unauthenticated');
+      }
+    } catch {
+      setAuthState('unauthenticated');
+    }
+  };
+
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError(null);
+    try {
+      if (authMode === 'login') {
+        const res = await api.login(credentials.username, credentials.password);
+        setCurrentUser(res.data.user);
+      } else {
+        const res = await api.register(credentials.username, credentials.password);
+        setCurrentUser(res.data.user);
+      }
+      setAuthState('authenticated');
+      fetchSubjects();
+    } catch (err) {
+      setAuthError(err.response?.data?.error || "Authentication failed");
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await api.logout();
+      setAuthState('unauthenticated');
+      setCurrentUser(null);
+      setSubjects([]);
+      setSelectedSubject(null);
+    } catch (err) {
+      console.error("Logout failed", err);
+    }
+  };
+
+  useEffect(() => {
+    if (authState === 'authenticated') {
+      fetchSubjects();
+    }
+  }, [authState]);
 
   useEffect(() => {
     if (selectedSubject) {
@@ -164,7 +223,7 @@ const App = () => {
     if (!selectedSubject) return;
     setIsThinking(true);
     try {
-      const res = await api.generateQuiz(selectedSubject.id);
+      const res = await api.generateQuiz(selectedSubject.id, mcqCount, shortCount);
       setQuizResponse(res.data);
       setQuizStep('quiz');
       setCurrentQuestionIdx(0);
@@ -368,6 +427,85 @@ const App = () => {
     );
   };
 
+  if (authState === 'loading') {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Loader2 className="animate-spin text-indigo-500" size={48} />
+      </div>
+    );
+  }
+
+  if (authState === 'unauthenticated') {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background overflow-hidden relative">
+        {/* Animated Background Elements */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-500/20 rounded-full blur-[120px] pointer-events-none"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-[120px] pointer-events-none"></div>
+
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass-card p-10 max-w-md w-full border-white/10 relative z-10"
+        >
+          <div className="text-center mb-10">
+            <div className="w-16 h-16 gradient-btn rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-indigo-500/20">
+              <Sparkles size={32} />
+            </div>
+            <h1 className="text-3xl font-bold mb-2">AskMyNotes</h1>
+            <p className="text-slate-400 text-sm">Sign in to access your intelligent study space.</p>
+          </div>
+
+          <form onSubmit={handleAuthSubmit} className="space-y-5">
+            <div>
+              <label className="block text-xs uppercase tracking-widest text-slate-500 font-bold mb-2">Username</label>
+              <input
+                type="text"
+                autoComplete="username"
+                value={credentials.username}
+                onChange={e => setCredentials({ ...credentials, username: e.target.value })}
+                className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm focus:outline-none focus:border-indigo-500/50 transition-all font-medium placeholder:text-slate-600"
+                placeholder="Enter your username"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-widest text-slate-500 font-bold mb-2">Password</label>
+              <input
+                type="password"
+                autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
+                value={credentials.password}
+                onChange={e => setCredentials({ ...credentials, password: e.target.value })}
+                className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm focus:outline-none focus:border-indigo-500/50 transition-all font-medium placeholder:text-slate-600"
+                placeholder="Enter your password"
+                required
+              />
+            </div>
+
+            {authError && (
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2 text-red-400 text-xs font-medium">
+                <AlertCircle size={14} />
+                {authError}
+              </div>
+            )}
+
+            <button type="submit" className="w-full gradient-btn py-4 rounded-xl font-bold flex items-center justify-center gap-2 mt-4">
+              {authMode === 'login' ? 'Sign In' : 'Create Account'} <ChevronRight size={18} />
+            </button>
+          </form>
+
+          <div className="mt-8 text-center">
+            <button
+              onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+              className="text-sm text-slate-400 hover:text-white transition-colors"
+            >
+              {authMode === 'login' ? "Don't have an account? Register" : "Already have an account? Sign In"}
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
@@ -415,7 +553,8 @@ const App = () => {
               </div>
               <button
                 onClick={(e) => { e.stopPropagation(); handleDeleteSubject(s.id); }}
-                className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/20 hover:text-red-400 rounded-lg transition-all"
+                className="p-1.5 hover:bg-red-500/20 text-slate-500 hover:text-red-400 rounded-lg transition-all"
+                title="Delete Subject"
               >
                 <Trash2 size={14} />
               </button>
@@ -426,11 +565,23 @@ const App = () => {
           )}
         </div>
 
-        <div className="pt-6 border-t border-white/5">
-          <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-            <div className="w-2 h-2 rounded-full bg-green-500"></div>
-            System Connected
+        {/* User Profile / Logout */}
+        <div className="pt-6 border-t border-white/5 flex flex-col gap-4 mt-auto">
+          <div className="flex items-center gap-3 px-2">
+            <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-300 font-bold text-sm">
+              {currentUser?.username.charAt(0).toUpperCase() || 'U'}
+            </div>
+            <div className="flex-1 truncate">
+              <div className="text-sm font-bold text-slate-200 truncate">{currentUser?.username || 'User'}</div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Standard User</div>
+            </div>
           </div>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 p-3 bg-white/5 hover:bg-red-500/10 border border-white/5 hover:border-red-500/30 rounded-xl text-slate-400 hover:text-red-400 transition-all text-sm font-bold"
+          >
+            Logout
+          </button>
         </div>
       </div>
 
@@ -654,21 +805,48 @@ const App = () => {
                       </p>
 
                       {quizStep === 'landing' ? (
-                        <button
-                          onClick={handleGenerateQuiz}
-                          disabled={isThinking}
-                          className="mx-auto gradient-btn py-4 px-10 text-lg rounded-2xl shadow-xl shadow-indigo-600/20"
-                        >
-                          {isThinking ? (
-                            <>
-                              <Loader2 className="animate-spin" /> Generating...
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles /> Generate Brain Quiz
-                            </>
-                          )}
-                        </button>
+                        <div className="space-y-8">
+                          <div className="flex flex-col md:flex-row items-center justify-center gap-6">
+                            <div className="flex flex-col items-center gap-3 glass-card p-4 border-white/5 w-full md:w-32">
+                              <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">MCQ Count</span>
+                              <input
+                                type="number"
+                                min="1"
+                                max="10"
+                                value={mcqCount}
+                                onChange={(e) => setMcqCount(parseInt(e.target.value) || 0)}
+                                className="bg-transparent text-2xl font-bold text-indigo-400 w-full text-center focus:outline-none"
+                              />
+                            </div>
+                            <div className="flex flex-col items-center gap-3 glass-card p-4 border-white/5 w-full md:w-32">
+                              <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Short Answer</span>
+                              <input
+                                type="number"
+                                min="1"
+                                max="5"
+                                value={shortCount}
+                                onChange={(e) => setShortCount(parseInt(e.target.value) || 0)}
+                                className="bg-transparent text-2xl font-bold text-purple-400 w-full text-center focus:outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={handleGenerateQuiz}
+                            disabled={isThinking}
+                            className="mx-auto gradient-btn py-4 px-10 text-lg rounded-2xl shadow-xl shadow-indigo-600/20"
+                          >
+                            {isThinking ? (
+                              <>
+                                <Loader2 className="animate-spin" /> Generating...
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles /> Generate Brain Quiz
+                              </>
+                            )}
+                          </button>
+                        </div>
                       ) : (
                         <InteractiveQuiz quiz={quizResponse} />
                       )}
@@ -756,8 +934,9 @@ const App = () => {
       <AnimatePresence>
         {previewFile && <DocumentPreviewer file={previewFile} onClose={() => setPreviewFile(null)} />}
       </AnimatePresence>
-    </div>
+    </div >
   );
 };
+
 
 export default App;

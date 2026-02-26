@@ -7,6 +7,11 @@ const api = axios.create({
     }
 });
 
+export const checkAuth = () => api.get('/api/auth/check/');
+export const login = (username, password) => api.post('/api/auth/login/', { username, password });
+export const register = (username, password) => api.post('/api/auth/register/', { username, password });
+export const logout = () => api.post('/api/auth/logout/');
+
 export const getSubjects = () => api.get('/api/subjects/');
 export const createSubject = (name) => api.post('/api/subjects/create/', { name });
 export const deleteSubject = (id) => api.post(`/api/subjects/${id}/delete/`); // Using POST for compatibility as registered
@@ -22,6 +27,7 @@ export const uploadNote = (id, file) => {
 
 export const sendChatMessage = (id, query) => api.post(`/subject/${id}/chat/`, { query });
 export const getChatHistory = (id) => api.get(`/subject/${id}/chat/history/`);
-export const generateQuiz = (id) => api.post(`/subject/${id}/generate-quiz/`);
+export const generateQuiz = (id, mcqCount = 5, shortCount = 3) =>
+    api.post(`/subject/${id}/generate-quiz/?mcq_count=${mcqCount}&short_count=${shortCount}`);
 
 export default api;
