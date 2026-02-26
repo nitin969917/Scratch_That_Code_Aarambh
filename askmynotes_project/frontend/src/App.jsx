@@ -39,6 +39,7 @@ const App = () => {
   const [userAnswers, setUserAnswers] = useState({});
   const [mcqCount, setMcqCount] = useState(5);
   const [shortCount, setShortCount] = useState(3);
+  const [chatSessions, setChatSessions] = useState([]); // New state for multi-chat sessions
 
   const [sessionId, setSessionId] = useState('');
   const [isListening, setIsListening] = useState(false);
@@ -111,8 +112,12 @@ const App = () => {
   useEffect(() => {
     if (selectedSubject) {
       fetchNotes(selectedSubject.id);
-      fetchChatHistory(selectedSubject.id);
-      setSessionId(Math.random().toString(36).substring(2, 15)); // Unique session for memory
+      fetchChatSessions(selectedSubject.id);
+
+      // We don't fetch chat history immediately anymore, we wait for a session to be selected.
+      // But if there are no existing sessions, we'll just prep a brand new session ID.
+      // fetchChatSessions handles setting the default/initial session ID.
+
       if (window.speechSynthesis) window.speechSynthesis.cancel();
       setQuizResponse(null);
       setQuizStep('landing');
@@ -144,9 +149,49 @@ const App = () => {
     }
   };
 
-  const fetchChatHistory = async (id) => {
+  const fetchChatSessions = async (id) => {
     try {
-      const res = await api.getChatHistory(id);
+      const res = await api.getChatSessions(id);
+      setChatSessions(res.data.sessions);
+
+      // If there are existing sessions, auto-select the most recent one to show its history
+      if (res.data.sessions.length > 0) {
+        const latestSessionId = res.data.sessions[0].id;
+        setSessionId(latestSessionId);
+        fetchChatHistory(id, latestSessionId);
+      } else {
+        // No sessions exist yet, initialize a blank slate
+        setSessionId(Math.random().toString(36).substring(2, 15)); // Brand new unique session
+        setMessages([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch chat sessions:", err);
+    }
+  };
+
+  const handleNewChat = () => {
+    if (!selectedSubject) return;
+    setSessionId(Math.random().toString(36).substring(2, 15));
+    setMessages([]);
+    setActiveTab('chat');
+  };
+
+  const handleDeleteChatSession = async (e, sessionIdToDelete) => {
+    e.stopPropagation();
+    if (!selectedSubject || !window.confirm("Delete this chat session permanently?")) return;
+
+    try {
+      await api.deleteChatSession(selectedSubject.id, sessionIdToDelete);
+      // Refresh list
+      fetchChatSessions(selectedSubject.id);
+    } catch (err) {
+      setError("Failed to delete chat session.");
+    }
+  };
+
+  const fetchChatHistory = async (subjectId, sessionIdToFetch) => {
+    try {
+      const res = await api.getChatHistory(subjectId, sessionIdToFetch);
       setMessages(res.data.history.map(m => ({
         type: 'user', content: m.query, ...m
       }))); // This is a bit simplified, usually we'd interleaved
@@ -285,6 +330,10 @@ const App = () => {
       setMessages(prev => [...prev, { type: 'bot', content: "Error communicating with AI." }]);
     } finally {
       setIsThinking(false);
+      // Refresh the chat sessions in the sidebar so the latest message shows as the title
+      if (selectedSubject) {
+        fetchChatSessions(selectedSubject.id);
+      }
     }
   };
 
@@ -579,7 +628,11 @@ const App = () => {
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
       <div className="w-80 glass border-r h-full flex flex-col p-6">
-        <div className="flex items-center gap-3 mb-10">
+        <div
+          onClick={() => setSelectedSubject(null)}
+          className="flex items-center gap-3 mb-10 cursor-pointer hover:opacity-80 transition-opacity"
+          title="Return to Home"
+        >
           <div className="w-10 h-10 gradient-btn rounded-xl flex items-center justify-center p-0">
             <Sparkles size={20} />
           </div>
@@ -603,31 +656,77 @@ const App = () => {
 
         <div className="flex-1 overflow-y-auto space-y-3 pr-2">
           {subjects.map(s => (
-            <motion.div
-              key={s.id}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              onClick={() => setSelectedSubject(s)}
-              className={`group flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all ${selectedSubject?.id === s.id
-                ? 'bg-indigo-600/20 border-indigo-500/30 border shadow-lg shadow-indigo-500/10'
-                : 'bg-white/5 border border-transparent hover:bg-white/10'
-                }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full ${selectedSubject?.id === s.id ? 'bg-indigo-400 animate-pulse' : 'bg-slate-600'}`}></div>
-                <div>
-                  <div className="font-semibold text-sm">{s.name}</div>
-                  <div className="text-xs text-slate-500">{s.note_count} Notes</div>
-                </div>
-              </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); handleDeleteSubject(s.id); }}
-                className="p-1.5 hover:bg-red-500/20 text-slate-500 hover:text-red-400 rounded-lg transition-all"
-                title="Delete Subject"
+            <div key={s.id} className="space-y-2">
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                onClick={() => setSelectedSubject(s)}
+                className={`group flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all ${selectedSubject?.id === s.id
+                  ? 'bg-indigo-600/20 border-indigo-500/30 border shadow-lg shadow-indigo-500/10'
+                  : 'bg-white/5 border border-transparent hover:bg-white/10'
+                  }`}
               >
-                <Trash2 size={14} />
-              </button>
-            </motion.div>
+                <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full ${selectedSubject?.id === s.id ? 'bg-indigo-400 animate-pulse' : 'bg-slate-600'}`}></div>
+                  <div>
+                    <div className="font-semibold text-sm">{s.name}</div>
+                    <div className="text-xs text-slate-500">{s.note_count} Notes</div>
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDeleteSubject(s.id); }}
+                  className="w-8 h-8 flex items-center justify-center bg-transparent hover:bg-red-500/10 text-slate-500 hover:text-red-400 rounded-lg transition-all border border-transparent hover:border-red-500/20 hover:shadow-sm"
+                  title="Delete Subject"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </motion.div>
+
+              {/* Nested Chat Sessions UI (ChatGPT style) when subject is active */}
+              {selectedSubject?.id === s.id && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="ml-6 pl-3 border-l-2 border-white/10 space-y-2 mb-4"
+                >
+                  <button
+                    onClick={handleNewChat}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-lg transition-all border border-indigo-500/20"
+                  >
+                    <Plus size={14} /> New Chat
+                  </button>
+
+                  <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                    {chatSessions.map((session, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => {
+                          setSessionId(session.id);
+                          fetchChatHistory(s.id, session.id);
+                          setActiveTab('chat');
+                        }}
+                        className={`group flex items-center justify-between px-3 py-2 rounded-lg text-xs cursor-pointer transition-all ${sessionId === session.id ? 'bg-white/10 text-white font-medium shadow-sm' : 'text-slate-500 hover:bg-white/5 hover:text-slate-300'}`}
+                      >
+                        <div className="flex items-center gap-2 truncate pr-2">
+                          <MessageSquare size={12} className={sessionId === session.id ? 'text-indigo-400' : 'opacity-50'} />
+                          <span className="truncate">{session.title}</span>
+                        </div>
+                        <button
+                          onClick={(e) => handleDeleteChatSession(e, session.id)}
+                          className={`flex-shrink-0 opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all rounded hover:bg-red-500/20 md:hidden ${sessionId === session.id ? 'opacity-100 text-slate-400' : ''}`}
+                          title="Delete Chat"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    ))}
+                    {chatSessions.length === 0 && (
+                      <div className="px-3 py-2 text-xs text-slate-600 italic">No chat history.</div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </div>
           ))}
           {subjects.length === 0 && (
             <div className="text-center py-10 text-slate-500 text-sm italic">No subjects yet. Create one above!</div>
@@ -671,52 +770,56 @@ const App = () => {
         {selectedSubject ? (
           <>
             {/* Header */}
-            <div className="p-8 border-b border-white/5 flex items-center justify-between bg-black/5">
+            <div className="border-b border-white/5 flex items-center justify-between bg-black/5" style={{ padding: '0.8rem 2rem' }}>
               <div>
                 <h2 className="text-2xl font-bold tracking-tight">{selectedSubject.name}</h2>
                 <div className="flex items-center gap-2 mt-1 text-sm text-slate-400">
                   <FileText size={14} /> {notes.length} uploaded materials
                 </div>
               </div>
-              <div className="flex gap-4">
+              <div className="flex items-center gap-3">
+                {/* Voice Toggle */}
                 <button
                   onClick={() => {
                     setIsVoiceEnabled(!isVoiceEnabled);
                     if (isVoiceEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
                   }}
-                  className="p-2 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-all bg-white/5"
+                  className={`flex items-center justify-center w-[38px] h-[38px] rounded-xl transition-all font-bold ${isVoiceEnabled ? 'soft-active-btn' : 'bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10'}`}
                   title={isVoiceEnabled ? "Mute Voice Tutor" : "Enable Voice Tutor"}
                 >
-                  {isVoiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+                  {isVoiceEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
                 </button>
-                <label className="gradient-btn cursor-pointer py-2 px-4 text-sm font-medium">
+
+                {/* Upload Button */}
+                <label className={`flex items-center gap-2 px-4 h-[38px] rounded-xl text-[13px] font-bold transition-all cursor-pointer ${isUploading ? 'bg-indigo-500/50 text-white cursor-not-allowed' : 'soft-active-btn'}`}>
                   {isUploading ? <Loader2 className="animate-spin" size={16} /> : <Upload size={16} />}
                   Upload Notes
                   <input type="file" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
                 </label>
-                <div className="flex p-1 bg-white/5 rounded-xl border border-white/10">
-                  <button
-                    onClick={() => setActiveTab('chat')}
-                    className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'chat' ? 'bg-indigo-600/20 text-indigo-400 shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                  >
-                    <MessageSquare size={16} /> Chat
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('files')}
-                    className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'files' ? 'bg-indigo-600/20 text-indigo-400 shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                  >
-                    <FileText size={16} /> Files
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('study')}
-                    className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'study' ? 'bg-indigo-600/20 text-indigo-400 shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                  >
-                    <BookOpen size={16} /> Study Mode
-                  </button>
-                </div>
+
+                <div className="w-[1px] h-8 bg-white/10 mx-1"></div>
+
+                {/* Tabs */}
+                <button
+                  onClick={() => setActiveTab('chat')}
+                  className={`flex items-center gap-2 px-4 h-[38px] rounded-xl text-[13px] font-bold transition-all ${activeTab === 'chat' ? 'soft-active-btn' : 'bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10'}`}
+                >
+                  <MessageSquare size={16} /> Chat
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('files')}
+                  className={`flex items-center gap-2 px-4 h-[38px] rounded-xl text-[13px] font-bold transition-all ${activeTab === 'files' ? 'soft-active-btn' : 'bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10'}`}
+                >
+                  <FileText size={16} /> Files
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('study')}
+                  className={`flex items-center gap-2 px-4 h-[38px] rounded-xl text-[13px] font-bold transition-all ${activeTab === 'study' ? 'soft-active-btn' : 'bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10'}`}
+                >
+                  <BookOpen size={16} /> Study Mode
+                </button>
               </div>
             </div>
 
@@ -851,7 +954,7 @@ const App = () => {
                               e.stopPropagation();
                               handleDeleteNote(n.id);
                             }}
-                            className="w-10 h-10 flex items-center justify-center bg-white/0 hover:bg-red-500/10 rounded-xl text-slate-500 hover:text-red-400 transition-all"
+                            className="w-10 h-10 flex items-center justify-center bg-transparent hover:bg-red-500/10 rounded-xl text-slate-500 hover:text-red-400 transition-all border border-transparent hover:border-red-500/20 hover:shadow-sm"
                             title="Delete File"
                           >
                             <Trash2 size={18} />

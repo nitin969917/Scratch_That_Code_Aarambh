@@ -231,24 +231,68 @@ def subject_chat_history(request, subject_id):
         
     # Ensure the user owns this subject
     subject = get_object_or_404(Subject, id=subject_id, user=request.user)
-    history = ChatMessage.objects.filter(subject=subject).order_by('timestamp')
+    
+    # Filter by session_id if provided
+    session_id = request.GET.get('session_id')
+    history_query = ChatMessage.objects.filter(subject=subject)
+    if session_id:
+        history_query = history_query.filter(session_id=session_id)
+        
+    history = history_query.order_by('timestamp')
     data = []
     for msg in history:
-        try:
-            # Try to safely parse citations out of response string, 
-            # Or assume we stored citations in a separate field (we didn't, we can pass None for now)
-            # A more robust DB structure would separate text, citations, and confidence in the model
-            pass
-        except:
-            pass
-            
         data.append({
             'query': msg.query,
             'response': msg.response,
-            'citations': None,
-            'confidence': None
+            'session_id': msg.session_id,
+            'timestamp': msg.timestamp.isoformat()
         })
     return JsonResponse({'history': data})
+
+def api_chat_sessions(request, subject_id):
+    """Returns a list of unique chat sessions for a subject, ordered by newest first."""
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        
+    subject = get_object_or_404(Subject, id=subject_id, user=request.user)
+    
+    # Get all distinct session_ids and their metadata (first query and latest timestamp)
+    # Since sqlite doesn't support distinct ON, we'll do this in python for now since scale is small
+    messages = ChatMessage.objects.filter(subject=subject).order_by('timestamp')
+    
+    sessions_dict = {}
+    for msg in messages:
+        sid = msg.session_id or 'default'
+        if sid not in sessions_dict:
+            sessions_dict[sid] = {
+                'id': sid,
+                'title': msg.query[:40] + '...' if len(msg.query) > 40 else msg.query,
+                'created_at': msg.timestamp.isoformat()
+            }
+        # Update latest timestamp (messages are ordered by timestamp ascending)
+        sessions_dict[sid]['last_updated'] = msg.timestamp.isoformat()
+        
+    # Convert to list and sort descending by last_updated
+    sessions_list = list(sessions_dict.values())
+    sessions_list.sort(key=lambda x: x['last_updated'], reverse=True)
+    
+    return JsonResponse({'sessions': sessions_list})
+
+@csrf_exempt
+def api_delete_chat_session(request, subject_id, session_id):
+    """Deletes all messages belonging to a specific session."""
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        
+    if request.method != 'DELETE' and request.method != 'POST':
+        return JsonResponse({'error': 'Invalid method'}, status=405)
+        
+    subject = get_object_or_404(Subject, id=subject_id, user=request.user)
+    
+    # Delete all messages in the session
+    ChatMessage.objects.filter(subject=subject, session_id=session_id).delete()
+    
+    return JsonResponse({'message': 'Session deleted successfully'})
 
 @csrf_exempt
 def generate_quiz(request, subject_id):

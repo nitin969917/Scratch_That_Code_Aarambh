@@ -26,7 +26,16 @@ export const uploadNote = (id, file) => {
 };
 
 export const sendChatMessage = (id, query, session_id) => api.post(`/subject/${id}/chat/`, { query, session_id });
-export const getChatHistory = (id) => api.get(`/subject/${id}/chat/history/`);
+export const getChatHistory = (id, session_id) => {
+    let url = `/subject/${id}/chat/history/`;
+    if (session_id) {
+        url += `?session_id=${session_id}`;
+    }
+    return api.get(url);
+};
+export const getChatSessions = (id) => api.get(`/api/subjects/${id}/chat-sessions/`);
+export const deleteChatSession = (id, sessionId) => api.delete(`/api/subjects/${id}/chat-sessions/${sessionId}/`);
+
 export const generateQuiz = (id, mcqCount = 5, shortCount = 3) =>
     api.post(`/subject/${id}/generate-quiz/?mcq_count=${mcqCount}&short_count=${shortCount}`);
 

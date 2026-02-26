@@ -24,6 +24,10 @@ urlpatterns = [
     path('api/subjects/<int:subject_id>/upload/', views.api_upload_note, name='api_upload_note'),
     path('api/notes/<int:note_id>/delete/', views.api_delete_note, name='api_delete_note'),
     
+    # Chat Session Management
+    path('api/subjects/<int:subject_id>/chat-sessions/', views.api_chat_sessions, name='api_chat_sessions'),
+    path('api/subjects/<int:subject_id>/chat-sessions/<str:session_id>/', views.api_delete_chat_session, name='api_delete_chat_session'),
+    
     # Catch-all for React Router (if used) or unknown frontend paths
     re_path(r'^(?!media/|static/).*$', views.dashboard),
 ]

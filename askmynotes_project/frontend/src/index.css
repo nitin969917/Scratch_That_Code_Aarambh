@@ -716,6 +716,23 @@ h4,
   cursor: not-allowed;
 }
 
+/* Softer Navbar Active State */
+.soft-active-btn {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.7) 0%, rgba(168, 85, 247, 0.7) 100%);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.75rem;
+  font-weight: 600;
+  box-shadow: 0 4px 20px -5px rgba(168, 85, 247, 0.3);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.soft-active-btn:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.8) 0%, rgba(168, 85, 247, 0.8) 100%);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
