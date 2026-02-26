@@ -16,7 +16,8 @@ import {
   Mic,
   Activity,
   Volume2,
-  VolumeX
+  VolumeX,
+  Eye
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as api from './api';
@@ -425,11 +426,14 @@ const App = () => {
     const currentQ = questions[currentQuestionIdx];
     const isFinished = currentQuestionIdx === questions.length - 1;
 
+    const [isRevealed, setIsRevealed] = useState(false);
+
     const handleAnswer = (val) => {
       setUserAnswers(prev => ({ ...prev, [currentQ.id]: val }));
     };
 
     const nextQuestion = () => {
+      setIsRevealed(false);
       if (!isFinished) setCurrentQuestionIdx(prev => prev + 1);
       else setQuizStep('results');
     };
@@ -530,19 +534,42 @@ const App = () => {
               ))}
             </div>
           ) : (
-            <textarea
-              className="w-full bg-black/30 border border-white/5 rounded-2xl p-6 text-sm focus:outline-none focus:border-indigo-500/30 transition-all min-height-[150px]"
-              placeholder="Type your explanation here..."
-              value={userAnswers[currentQ.id] || ""}
-              onChange={(e) => handleAnswer(e.target.value)}
-            />
+            <div className="space-y-6">
+              <textarea
+                className="w-full bg-black/30 border border-white/5 rounded-2xl p-6 text-sm focus:outline-none focus:border-indigo-500/30 transition-all min-h-[150px]"
+                placeholder="Type your explanation/answer here to test yourself..."
+                value={userAnswers[currentQ.id] || ""}
+                onChange={(e) => handleAnswer(e.target.value)}
+              />
+
+              {!isRevealed ? (
+                <button
+                  onClick={() => setIsRevealed(true)}
+                  disabled={!userAnswers[currentQ.id]}
+                  className="w-full py-4 border border-indigo-500/30 bg-indigo-500/10 rounded-xl text-indigo-300 font-bold hover:bg-indigo-500/20 transition-all text-sm flex items-center justify-center gap-2"
+                >
+                  <Eye size={18} /> Reveal Model Answer
+                </button>
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-6 bg-white/5 border border-white/10 rounded-2xl"
+                >
+                  <div className="text-[10px] uppercase tracking-widest text-indigo-400 font-bold mb-2">Model Answer</div>
+                  <div className="text-sm text-slate-300 leading-relaxed font-medium">
+                    {currentQ.answer}
+                  </div>
+                </motion.div>
+              )}
+            </div>
           )}
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-4">
           <button
             onClick={nextQuestion}
-            disabled={!userAnswers[currentQ.id]}
+            disabled={!userAnswers[currentQ.id] || (currentQ.type === 'short' && !isRevealed)}
             className="gradient-btn px-10 py-3 rounded-xl disabled:opacity-50 flex items-center gap-2"
           >
             {isFinished ? "Finish Quiz" : "Next Question"} <Send size={16} />

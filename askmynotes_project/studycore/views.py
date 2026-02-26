@@ -315,41 +315,32 @@ def generate_quiz(request, subject_id):
     if not full_text.strip():
         return JsonResponse({'error': 'No notes available to generate a quiz.'}, status=400)
     
-    mcq_count = request.GET.get('mcq_count', 5)
-    short_count = request.GET.get('short_count', 3)
+    try:
+        data = json.loads(request.body)
+        mcq_count = int(data.get('mcqCount', 5))
+        short_count = int(data.get('shortCount', 3))
+    except Exception:
+        mcq_count = 5
+        short_count = 3
 
-    template = """You are a senior professor. Based on the following study material for the subject '{subject_name}', generate a comprehensive quiz in JSON format.
+
+    template = """You are a senior professor. Based on the study material for '{subject_name}', generate a JSON quiz.
     
-CRITICAL CONSTRAINTS:
-1. Generate EXACTLY {mcq_count} Multiple Choice Questions (MCQs).
-2. Generate EXACTLY {short_count} Short-Answer Questions.
-3. ORDER: All MCQs must come first in the array, followed by all Short-Answer questions.
-4. MCQs MUST have exactly 4 options, a correct answer, and a detailed 'explanation'.
-5. Short-Answer questions MUST have a comprehensive 'answer' (model answer).
+CRITICAL:
+1. Generate EXACTLY {mcq_count} MCQs (type: "mcq").
+2. Generate EXACTLY {short_count} Short-Answer Questions (type: "short").
+3. Each MCQ must have 4 options, a correct 'answer', and a concise 'explanation'.
+4. Each Short-Answer must have a 'answer' (model answer).
 
 JSON SCHEMA:
 {{
   "questions": [
-    {{
-      "id": 1,
-      "type": "mcq",
-      "question": "Question text here?",
-      "options": ["Option A", "Option B", "Option C", "Option D"],
-      "answer": "Option B",
-      "explanation": "A detailed explanation of why Option B is correct."
-    }},
-    {{
-      "id": 6,
-      "type": "short",
-      "question": "Question text here?",
-      "answer": "Expected key concepts or sample model answer"
-    }}
+    {{ "id": 1, "type": "mcq", "question": "...", "options": ["A", "B", "C", "D"], "answer": "...", "explanation": "..." }},
+    {{ "id": {mcq_count}+1, "type": "short", "question": "...", "answer": "..." }}
   ]
 }}
 
-Requirements:
-- Return ONLY the raw JSON string. Do not include markdown code blocks or any other text.
-- No conversational filler.
+Return ONLY the raw JSON string.
 
 Material:
 {context}
@@ -359,25 +350,41 @@ Quiz JSON:"""
     prompt = PromptTemplate.from_template(template)
     filled_prompt = prompt.format(
         subject_name=subject.name,
-        context=full_text[:15000],
+        context=full_text[:12000],
         mcq_count=mcq_count,
         short_count=short_count
     )
     
-    try:
-        llm = OllamaLLM(model="llama3.2")
-        raw_response = llm.invoke(filled_prompt)
-        # Try to parse JSON to ensure it's valid
-        import re
-        json_match = re.search(r'(\{.*\})', raw_response, re.DOTALL)
-        if json_match:
-            quiz_json = json.loads(json_match.group(1))
-        else:
-            quiz_json = json.loads(raw_response)
-    except Exception as e:
-        return JsonResponse({'error': f"LLM error or JSON parsing error: {str(e)}"}, status=500)
-        
-    return JsonResponse(quiz_json)
+    llm = OllamaLLM(model="llama3.2")
+    
+    for attempt in range(3):
+        try:
+            raw_response = llm.invoke(filled_prompt)
+            import re
+            json_match = re.search(r'(\{.*\})', raw_response, re.DOTALL)
+            if json_match:
+                quiz_json = json.loads(json_match.group(1))
+            else:
+                quiz_json = json.loads(raw_response)
+                
+            # VALIDATION: Check if we actually got both types if requested
+            questions = quiz_json.get('questions', [])
+            has_mcq = any(q.get('type') == 'mcq' for q in questions)
+            has_short = any(q.get('type') == 'short' for q in questions)
+            
+            # If user requested short questions but we didn't get any, retry
+            if short_count > 0 and not has_short:
+                raise ValueError("AI failed to generate short-answer questions.")
+            if mcq_count > 0 and not has_mcq:
+                raise ValueError("AI failed to generate MCQ questions.")
+
+            return JsonResponse(quiz_json)
+            
+        except Exception as e:
+            if attempt == 2:
+                return JsonResponse({'error': f"Failed after 3 attempts: {str(e)}"}, status=500)
+            continue
+
 
 @csrf_exempt
 def subject_chat(request, subject_id):

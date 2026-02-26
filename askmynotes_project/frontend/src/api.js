@@ -37,6 +37,6 @@ export const getChatSessions = (id) => api.get(`/api/subjects/${id}/chat-session
 export const deleteChatSession = (id, sessionId) => api.delete(`/api/subjects/${id}/chat-sessions/${sessionId}/`);
 
 export const generateQuiz = (id, mcqCount = 5, shortCount = 3) =>
-    api.post(`/subject/${id}/generate-quiz/?mcq_count=${mcqCount}&short_count=${shortCount}`);
+    api.post(`/subject/${id}/generate-quiz/`, { mcqCount, shortCount });
 
 export default api;
