@@ -17,10 +17,215 @@ import {
   Activity,
   Volume2,
   VolumeX,
-  Eye
+  Eye,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as api from './api';
+
+const DocumentPreviewer = ({ file, onClose }) => {
+  if (!file) return null;
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="modal-overlay"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        className="modal-content"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="modal-header">
+          <div className="flex items-center gap-3">
+            <FileText className="text-indigo-400" size={20} />
+            <span className="font-bold text-slate-200">{file.filename}</span>
+          </div>
+          <button className="close-btn" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+        <iframe
+          src={file.page ? `${file.file_url}#page=${file.page}` : file.file_url}
+          className="preview-iframe"
+          title="Document Preview"
+        ></iframe>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+const InteractiveQuiz = ({
+  quiz,
+  currentQuestionIdx,
+  setCurrentQuestionIdx,
+  userAnswers,
+  setUserAnswers,
+  quizStep,
+  setQuizStep,
+  handleClearQuiz
+}) => {
+  if (!quiz || !quiz.questions) return null;
+  const questions = quiz.questions;
+  const currentQ = questions[currentQuestionIdx];
+  const isFinished = currentQuestionIdx === questions.length - 1;
+
+  const [isRevealed, setIsRevealed] = useState(false);
+
+  const handleAnswer = (val) => {
+    setUserAnswers(prev => ({ ...prev, [currentQ.id]: val }));
+  };
+
+  const nextQuestion = () => {
+    setIsRevealed(false);
+    if (!isFinished) setCurrentQuestionIdx(prev => prev + 1);
+    else setQuizStep('results');
+  };
+
+  if (quizStep === 'results') {
+    const totalMCQs = questions.filter(q => q.type === 'mcq').length;
+    const score = questions.filter(q => q.type === 'mcq' && userAnswers[q.id] === q.answer).length;
+
+    return (
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+        <div className="glass-card p-10 text-center border-indigo-500/20">
+          <div className="w-20 h-20 bg-indigo-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Sparkles className="text-indigo-400" size={32} />
+          </div>
+          <h3 className="text-3xl font-bold mb-2">Quiz Complete!</h3>
+          <p className="text-slate-400 mb-8">Great job reviewing your notes.</p>
+
+          <div className="grid grid-cols-2 gap-4 max-w-sm mx-auto mb-10">
+            <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+              <div className="text-2xl font-bold text-indigo-400">{score}/{totalMCQs}</div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mt-1">MCQ Score</div>
+            </div>
+            <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+              <div className="text-2xl font-bold text-purple-400">{Math.round((score / totalMCQs) * 100)}%</div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mt-1">Accuracy</div>
+            </div>
+          </div>
+
+          <button onClick={handleClearQuiz} className="px-8 py-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 transition-all text-sm font-bold">
+            Retake Different Quiz
+          </button>
+        </div>
+
+        <div className="space-y-4 pt-10">
+          <h4 className="text-sm font-bold uppercase tracking-widest text-slate-500 mb-6">Review Your Answers</h4>
+          {questions.map((q, idx) => (
+            <div key={q.id} className="glass-card p-6 border-white/5">
+              <div className="text-[10px] text-slate-500 mb-1">Question {idx + 1} • {q.type.toUpperCase()}</div>
+              <div className="font-medium mb-4">{q.question}</div>
+              <div className="flex flex-col md:flex-row gap-4 text-xs">
+                <div className="flex-1">
+                  <span className="text-slate-500 block mb-1">Your Choice:</span>
+                  <span className={q.type === 'mcq' ? (userAnswers[q.id] === q.answer ? 'text-emerald-400' : 'text-red-400') : 'text-slate-300 font-medium'}>
+                    {userAnswers[q.id] || "Empty"}
+                  </span>
+                </div>
+                <div className="flex-1">
+                  <span className="text-slate-500 block mb-1">{q.type === 'mcq' ? 'Correct Option:' : 'Model Answer:'}</span>
+                  <span className="text-indigo-300 font-medium">{q.answer}</span>
+                </div>
+              </div>
+              {q.type === 'mcq' && q.explanation && (
+                <div className="mt-4 pt-4 border-t border-white/5 text-[11px] text-slate-400 leading-relaxed">
+                  <span className="text-indigo-400/80 font-bold uppercase tracking-tighter mr-2">Context & Explanation:</span>
+                  <span className="opacity-80 italic">{q.explanation}</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      key={currentQuestionIdx}
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      className="max-w-2xl mx-auto"
+    >
+      <div className="mb-8 flex justify-between items-center text-xs text-slate-500 uppercase font-bold tracking-widest">
+        <span>Question {currentQuestionIdx + 1} of {questions.length}</span>
+        <span className="text-indigo-400">{Math.round(((currentQuestionIdx) / questions.length) * 100)}% Progress</span>
+      </div>
+
+      <div className="glass-card p-8 border-indigo-500/10 mb-8">
+        <h3 className="text-xl font-medium leading-relaxed mb-10">{currentQ.question}</h3>
+
+        {currentQ.type === 'mcq' ? (
+          <div className="grid gap-3">
+            {currentQ.options.map((opt, i) => (
+              <button
+                key={i}
+                onClick={() => handleAnswer(opt)}
+                className={`p-4 rounded-xl text-left border transition-all text-sm font-medium flex items-center gap-4 ${userAnswers[currentQ.id] === opt
+                  ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-200'
+                  : 'bg-white/5 border-white/5 hover:border-white/10 text-slate-400 hover:text-white'
+                  }`}
+              >
+                <div className={`w-6 h-6 rounded-full border flex items-center justify-center text-[10px] ${userAnswers[currentQ.id] === opt ? 'bg-indigo-500 border-indigo-400' : 'border-slate-700'
+                  }`}>
+                  {String.fromCharCode(65 + i)}
+                </div>
+                {opt}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <textarea
+              className="w-full bg-black/30 border border-white/5 rounded-2xl p-6 text-sm focus:outline-none focus:border-indigo-500/30 transition-all min-h-[150px]"
+              placeholder="Type your explanation/answer here to test yourself..."
+              value={userAnswers[currentQ.id] || ""}
+              onChange={(e) => handleAnswer(e.target.value)}
+            />
+
+            {!isRevealed ? (
+              <button
+                onClick={() => setIsRevealed(true)}
+                disabled={!userAnswers[currentQ.id]}
+                className="w-full py-4 border border-indigo-500/30 bg-indigo-500/10 rounded-xl text-indigo-300 font-bold hover:bg-indigo-500/20 transition-all text-sm flex items-center justify-center gap-2"
+              >
+                <Eye size={18} /> Reveal Model Answer
+              </button>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-6 bg-white/5 border border-white/10 rounded-2xl"
+              >
+                <div className="text-[10px] uppercase tracking-widest text-indigo-400 font-bold mb-2">Model Answer</div>
+                <div className="text-sm text-slate-300 leading-relaxed font-medium">
+                  {currentQ.answer}
+                </div>
+              </motion.div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-end gap-4">
+        <button
+          onClick={nextQuestion}
+          disabled={!userAnswers[currentQ.id] || (currentQ.type === 'short' && !isRevealed)}
+          className="gradient-btn px-10 py-3 rounded-xl disabled:opacity-50 flex items-center gap-2"
+        >
+          {isFinished ? "Finish Quiz" : "Next Question"} <Send size={16} />
+        </button>
+      </div>
+    </motion.div>
+  );
+};
 
 const App = () => {
   const [subjects, setSubjects] = useState([]);
@@ -46,6 +251,7 @@ const App = () => {
   const [sessionId, setSessionId] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
   const recognitionRef = useRef(null);
 
   const [authState, setAuthState] = useState('loading'); // loading, unauthenticated, authenticated
@@ -59,6 +265,15 @@ const App = () => {
   useEffect(() => {
     checkAuthentication();
   }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('light', theme === 'light');
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
 
   const checkAuthentication = async () => {
     try {
@@ -345,11 +560,11 @@ const App = () => {
     }
   };
 
-  const handleGenerateQuiz = async () => {
+  const handleGenerateQuiz = async (mCount, sCount) => {
     if (!selectedSubject) return;
     setIsThinking(true);
     try {
-      const res = await api.generateQuiz(selectedSubject.id, mcqCount, shortCount);
+      const res = await api.generateQuiz(selectedSubject.id, mCount, sCount);
       setQuizResponse(res.data);
       setQuizStep('quiz');
       setCurrentQuestionIdx(0);
@@ -385,199 +600,7 @@ const App = () => {
     setMessages([]);
   };
 
-  const DocumentPreviewer = ({ file, onClose }) => {
-    if (!file) return null;
-    return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="modal-overlay"
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ scale: 0.9, y: 20 }}
-          animate={{ scale: 1, y: 0 }}
-          className="modal-content"
-          onClick={e => e.stopPropagation()}
-        >
-          <div className="modal-header">
-            <div className="flex items-center gap-3">
-              <FileText className="text-indigo-400" size={20} />
-              <span className="font-bold text-slate-200">{file.filename}</span>
-            </div>
-            <button className="close-btn" onClick={onClose}>
-              <X size={18} />
-            </button>
-          </div>
-          <iframe
-            src={file.page ? `${file.file_url}#page=${file.page}` : file.file_url}
-            className="preview-iframe"
-            title="Document Preview"
-          ></iframe>
-        </motion.div>
-      </motion.div>
-    );
-  };
 
-  const InteractiveQuiz = ({ quiz }) => {
-    if (!quiz || !quiz.questions) return null;
-    const questions = quiz.questions;
-    const currentQ = questions[currentQuestionIdx];
-    const isFinished = currentQuestionIdx === questions.length - 1;
-
-    const [isRevealed, setIsRevealed] = useState(false);
-
-    const handleAnswer = (val) => {
-      setUserAnswers(prev => ({ ...prev, [currentQ.id]: val }));
-    };
-
-    const nextQuestion = () => {
-      setIsRevealed(false);
-      if (!isFinished) setCurrentQuestionIdx(prev => prev + 1);
-      else setQuizStep('results');
-    };
-
-    if (quizStep === 'results') {
-      const totalMCQs = questions.filter(q => q.type === 'mcq').length;
-      const score = questions.filter(q => q.type === 'mcq' && userAnswers[q.id] === q.answer).length;
-
-      return (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-          <div className="glass-card p-10 text-center border-indigo-500/20">
-            <div className="w-20 h-20 bg-indigo-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Sparkles className="text-indigo-400" size={32} />
-            </div>
-            <h3 className="text-3xl font-bold mb-2">Quiz Complete!</h3>
-            <p className="text-slate-400 mb-8">Great job reviewing your notes.</p>
-
-            <div className="grid grid-cols-2 gap-4 max-w-sm mx-auto mb-10">
-              <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                <div className="text-2xl font-bold text-indigo-400">{score}/{totalMCQs}</div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mt-1">MCQ Score</div>
-              </div>
-              <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                <div className="text-2xl font-bold text-purple-400">{Math.round((score / totalMCQs) * 100)}%</div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mt-1">Accuracy</div>
-              </div>
-            </div>
-
-            <button onClick={handleClearQuiz} className="px-8 py-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 transition-all text-sm font-bold">
-              Retake Different Quiz
-            </button>
-          </div>
-
-          <div className="space-y-4 pt-10">
-            <h4 className="text-sm font-bold uppercase tracking-widest text-slate-500 mb-6">Review Your Answers</h4>
-            {questions.map((q, idx) => (
-              <div key={q.id} className="glass-card p-6 border-white/5">
-                <div className="text-[10px] text-slate-500 mb-1">Question {idx + 1} • {q.type.toUpperCase()}</div>
-                <div className="font-medium mb-4">{q.question}</div>
-                <div className="flex flex-col md:flex-row gap-4 text-xs">
-                  <div className="flex-1">
-                    <span className="text-slate-500 block mb-1">Your Choice:</span>
-                    <span className={q.type === 'mcq' ? (userAnswers[q.id] === q.answer ? 'text-emerald-400' : 'text-red-400') : 'text-slate-300 font-medium'}>
-                      {userAnswers[q.id] || "Empty"}
-                    </span>
-                  </div>
-                  <div className="flex-1">
-                    <span className="text-slate-500 block mb-1">{q.type === 'mcq' ? 'Correct Option:' : 'Model Answer:'}</span>
-                    <span className="text-indigo-300 font-medium">{q.answer}</span>
-                  </div>
-                </div>
-                {q.type === 'mcq' && q.explanation && (
-                  <div className="mt-4 pt-4 border-t border-white/5 text-[11px] text-slate-400 leading-relaxed">
-                    <span className="text-indigo-400/80 font-bold uppercase tracking-tighter mr-2">Context & Explanation:</span>
-                    <span className="opacity-80 italic">{q.explanation}</span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </motion.div>
-      );
-    }
-
-    return (
-      <motion.div
-        key={currentQuestionIdx}
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: -20 }}
-        className="max-w-2xl mx-auto"
-      >
-        <div className="mb-8 flex justify-between items-center text-xs text-slate-500 uppercase font-bold tracking-widest">
-          <span>Question {currentQuestionIdx + 1} of {questions.length}</span>
-          <span className="text-indigo-400">{Math.round(((currentQuestionIdx) / questions.length) * 100)}% Progress</span>
-        </div>
-
-        <div className="glass-card p-8 border-indigo-500/10 mb-8">
-          <h3 className="text-xl font-medium leading-relaxed mb-10">{currentQ.question}</h3>
-
-          {currentQ.type === 'mcq' ? (
-            <div className="grid gap-3">
-              {currentQ.options.map((opt, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleAnswer(opt)}
-                  className={`p-4 rounded-xl text-left border transition-all text-sm font-medium flex items-center gap-4 ${userAnswers[currentQ.id] === opt
-                    ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-200'
-                    : 'bg-white/5 border-white/5 hover:border-white/10 text-slate-400 hover:text-white'
-                    }`}
-                >
-                  <div className={`w-6 h-6 rounded-full border flex items-center justify-center text-[10px] ${userAnswers[currentQ.id] === opt ? 'bg-indigo-500 border-indigo-400' : 'border-slate-700'
-                    }`}>
-                    {String.fromCharCode(65 + i)}
-                  </div>
-                  {opt}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <textarea
-                className="w-full bg-black/30 border border-white/5 rounded-2xl p-6 text-sm focus:outline-none focus:border-indigo-500/30 transition-all min-h-[150px]"
-                placeholder="Type your explanation/answer here to test yourself..."
-                value={userAnswers[currentQ.id] || ""}
-                onChange={(e) => handleAnswer(e.target.value)}
-              />
-
-              {!isRevealed ? (
-                <button
-                  onClick={() => setIsRevealed(true)}
-                  disabled={!userAnswers[currentQ.id]}
-                  className="w-full py-4 border border-indigo-500/30 bg-indigo-500/10 rounded-xl text-indigo-300 font-bold hover:bg-indigo-500/20 transition-all text-sm flex items-center justify-center gap-2"
-                >
-                  <Eye size={18} /> Reveal Model Answer
-                </button>
-              ) : (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="p-6 bg-white/5 border border-white/10 rounded-2xl"
-                >
-                  <div className="text-[10px] uppercase tracking-widest text-indigo-400 font-bold mb-2">Model Answer</div>
-                  <div className="text-sm text-slate-300 leading-relaxed font-medium">
-                    {currentQ.answer}
-                  </div>
-                </motion.div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="flex justify-end gap-4">
-          <button
-            onClick={nextQuestion}
-            disabled={!userAnswers[currentQ.id] || (currentQ.type === 'short' && !isRevealed)}
-            className="gradient-btn px-10 py-3 rounded-xl disabled:opacity-50 flex items-center gap-2"
-          >
-            {isFinished ? "Finish Quiz" : "Next Question"} <Send size={16} />
-          </button>
-        </div>
-      </motion.div>
-    );
-  };
 
   if (authState === 'loading') {
     return (
@@ -824,6 +847,15 @@ const App = () => {
                   {isVoiceEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
                 </button>
 
+                {/* Theme Toggle */}
+                <button
+                  onClick={toggleTheme}
+                  className="flex items-center justify-center w-[38px] h-[38px] rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-indigo-400 hover:bg-white/10 transition-all font-bold"
+                  title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+                >
+                  {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                </button>
+
                 {/* Upload Button */}
                 <label className={`flex items-center gap-2 px-4 h-[38px] rounded-xl text-[13px] font-bold transition-all cursor-pointer ${isUploading ? 'bg-indigo-500/50 text-white cursor-not-allowed' : 'soft-active-btn'}`}>
                   {isUploading ? <Loader2 className="animate-spin" size={16} /> : <Upload size={16} />}
@@ -1047,24 +1079,36 @@ const App = () => {
                             </div>
                           </div>
 
-                          <button
-                            onClick={handleGenerateQuiz}
-                            disabled={isThinking}
-                            className="mx-auto gradient-btn py-4 px-10 text-lg rounded-2xl shadow-xl shadow-indigo-600/20"
-                          >
-                            {isThinking ? (
-                              <>
-                                <Loader2 className="animate-spin" /> Generating...
-                              </>
-                            ) : (
-                              <>
-                                <Sparkles /> Generate Brain Quiz
-                              </>
-                            )}
-                          </button>
+                          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                            <button
+                              onClick={() => handleGenerateQuiz(mcqCount, 0)}
+                              disabled={isThinking || mcqCount === 0}
+                              className="w-full sm:w-auto gradient-btn px-8 py-4 rounded-xl flex items-center gap-3 text-sm font-bold shadow-lg shadow-indigo-500/10"
+                            >
+                              {isThinking ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
+                              Generate MCQs
+                            </button>
+                            <button
+                              onClick={() => handleGenerateQuiz(0, shortCount)}
+                              disabled={isThinking || shortCount === 0}
+                              className="w-full sm:w-auto px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl flex items-center gap-3 text-sm font-bold transition-all text-slate-300"
+                            >
+                              {isThinking ? <Loader2 className="animate-spin" size={18} /> : <Sparkles className="text-purple-400" size={18} />}
+                              Generate Q&A
+                            </button>
+                          </div>
                         </div>
                       ) : (
-                        <InteractiveQuiz quiz={quizResponse} />
+                        <InteractiveQuiz
+                          quiz={quizResponse}
+                          currentQuestionIdx={currentQuestionIdx}
+                          setCurrentQuestionIdx={setCurrentQuestionIdx}
+                          userAnswers={userAnswers}
+                          setUserAnswers={setUserAnswers}
+                          quizStep={quizStep}
+                          setQuizStep={setQuizStep}
+                          handleClearQuiz={handleClearQuiz}
+                        />
                       )}
 
                       {!notes.length && (

@@ -324,26 +324,33 @@ def generate_quiz(request, subject_id):
         short_count = 3
 
 
-    template = """You are a senior professor. Based on the study material for '{subject_name}', generate a JSON quiz.
+    instructions = []
+    if mcq_count > 0:
+        instructions.append(f"- Generate EXACTLY {mcq_count} MCQs (type: 'mcq'), each with 4 options, a correct 'answer', and a concise 'explanation'.")
+    if short_count > 0:
+        instructions.append(f"- Generate EXACTLY {short_count} Short-Answer Questions (type: 'short'), each with a model 'answer'.")
+
+    template = f"""You are a senior professor. Based on the study material for '{{subject_name}}', generate a JSON quiz.
     
 CRITICAL:
-1. Generate EXACTLY {mcq_count} MCQs (type: "mcq").
-2. Generate EXACTLY {short_count} Short-Answer Questions (type: "short").
-3. Each MCQ must have 4 options, a correct 'answer', and a concise 'explanation'.
-4. Each Short-Answer must have a 'answer' (model answer).
+{chr(10).join(instructions)}
+- Return ONLY the raw JSON.
 
 JSON SCHEMA:
-{{
+{{{{
   "questions": [
-    {{ "id": 1, "type": "mcq", "question": "...", "options": ["A", "B", "C", "D"], "answer": "...", "explanation": "..." }},
-    {{ "id": {mcq_count}+1, "type": "short", "question": "...", "answer": "..." }}
+    {{{{ 
+      "id": 1, 
+      "type": "{'mcq' if mcq_count > 0 else 'short'}", 
+      "question": "...", 
+      "answer": "...",
+      {'"options": ["A", "B", "C", "D"], "explanation": "..." ' if mcq_count > 0 else ''}
+    }}}}
   ]
-}}
-
-Return ONLY the raw JSON string.
+}}}}
 
 Material:
-{context}
+{{{{context}}}}
 
 Quiz JSON:"""
 

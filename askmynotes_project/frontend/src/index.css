@@ -9,10 +9,29 @@
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
   --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.03);
   --error: #ef4444;
   --success: #10b981;
   --warning: #f59e0b;
   --modal-bg: rgba(5, 7, 10, 0.9);
+  --sidebar-bg: rgba(13, 16, 23, 0.9);
+}
+
+:root.light {
+  --bg-deep: #f8fafc;
+  --bg-surface: rgba(255, 255, 255, 0.7);
+  --accent-primary: #4f46e5;
+  --accent-secondary: #9333ea;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --error: #dc2626;
+  --success: #059669;
+  --warning: #d97706;
+  --modal-bg: rgba(255, 255, 255, 0.9);
+  --sidebar-bg: #ffffff;
 }
 
 /* Base & Reset */
@@ -28,11 +47,30 @@ body {
   font-family: 'Inter', sans-serif;
   min-height: 100vh;
   overflow: hidden;
-  background-image:
+  transition: background-color 0.3s ease, color 0.3s ease;
+  background-attachment: fixed;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--bg-gradient);
+}
+
+:root {
+  --bg-gradient:
     radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.1) 0px, transparent 50%),
     radial-gradient(at 100% 0%, rgba(168, 85, 247, 0.1) 0px, transparent 50%),
     radial-gradient(at 50% 100%, rgba(99, 102, 241, 0.05) 0px, transparent 50%);
-  background-attachment: fixed;
+}
+
+:root.light {
+  --bg-gradient:
+    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(168, 85, 247, 0.05) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(99, 102, 241, 0.03) 0px, transparent 50%);
 }
 
 /* Layout Utilities (Mini-Framework) */
@@ -340,11 +378,12 @@ body {
 }
 
 .glass-card {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--glass-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--glass-border);
   border-radius: 1.25rem;
+  transition: background 0.3s ease, border-color 0.3s ease;
 }
 
 .border {
@@ -599,7 +638,7 @@ h4,
 }
 
 .text-indigo-400 {
-  color: #818cf8;
+  color: var(--accent-primary);
 }
 
 .text-red-400 {
@@ -743,7 +782,7 @@ h4,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--glass-border);
   border-radius: 10px;
 }
 
