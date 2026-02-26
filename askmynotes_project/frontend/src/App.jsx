@@ -28,6 +28,7 @@ const App = () => {
   const [notes, setNotes] = useState([]);
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
+  const [isSpokenInput, setIsSpokenInput] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [activeTab, setActiveTab] = useState('chat'); // 'chat' or 'study'
   const [quizResponse, setQuizResponse] = useState(null);
@@ -291,6 +292,7 @@ const App = () => {
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       setChatInput(transcript);
+      setIsSpokenInput(true);
 
       const lowerTranscript = transcript.toLowerCase();
       if (lowerTranscript.includes("start the quiz") || lowerTranscript.includes("start quiz")) {
@@ -314,6 +316,9 @@ const App = () => {
 
     const query = chatInput;
     setChatInput('');
+    const wasSpoken = isSpokenInput;
+    setIsSpokenInput(false);
+
     setMessages(prev => [...prev, { type: 'user', content: query }]);
     setIsThinking(true);
 
@@ -325,7 +330,9 @@ const App = () => {
         citations: res.data.citations,
         confidence: res.data.confidence
       }]);
-      speakText(res.data.response, res.data.confidence);
+      if (wasSpoken) {
+        speakText(res.data.response, res.data.confidence);
+      }
     } catch (err) {
       setMessages(prev => [...prev, { type: 'bot', content: "Error communicating with AI." }]);
     } finally {
@@ -1064,7 +1071,10 @@ const App = () => {
                     type="text"
                     placeholder="Ask about your notes..."
                     value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
+                    onChange={(e) => {
+                      setChatInput(e.target.value);
+                      setIsSpokenInput(false);
+                    }}
                     disabled={isThinking || !notes.length}
                     className="flex-1 min-w-0 bg-transparent px-4 py-3 focus:outline-none text-sm placeholder:text-slate-600"
                   />

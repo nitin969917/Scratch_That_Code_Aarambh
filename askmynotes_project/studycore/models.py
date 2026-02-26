@@ -27,6 +27,8 @@ class ChatMessage(models.Model):
     session_id = models.CharField(max_length=100, null=True, blank=True)
     query = models.TextField()
     response = models.TextField()
+    citations = models.JSONField(null=True, blank=True)
+    confidence = models.FloatField(null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

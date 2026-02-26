@@ -245,6 +245,8 @@ def subject_chat_history(request, subject_id):
             'query': msg.query,
             'response': msg.response,
             'session_id': msg.session_id,
+            'citations': msg.citations,
+            'confidence': msg.confidence,
             'timestamp': msg.timestamp.isoformat()
         })
     return JsonResponse({'history': data})
@@ -408,7 +410,14 @@ def subject_chat(request, subject_id):
     # Check if anything was returned
     if not results:
         fallback = f"Not found in your notes for {subject.name}."
-        ChatMessage.objects.create(subject=subject, session_id=session_id, query=query, response=fallback)
+        ChatMessage.objects.create(
+            subject=subject, 
+            session_id=session_id, 
+            query=query, 
+            response=fallback,
+            citations=[],
+            confidence=0.0
+        )
         return JsonResponse({
             'response': fallback,
             'citations': [],
@@ -497,7 +506,9 @@ Answer:"""
         subject=subject,
         session_id=session_id,
         query=query,
-        response=answer
+        response=answer,
+        citations=citations,
+        confidence=confidence
     )
     
     return JsonResponse({
