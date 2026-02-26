@@ -1,0 +1,73 @@
+{% extends 'studycore/base.html' %}
+
+{% block title %}Dashboard | AskMyNotes{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <h2>Your Subjects</h2>
+        <p class="text-muted">You can create up to 3 subjects. Keep your study materials isolated and organized.</p>
+    </div>
+    <div class="col-md-4 text-end">
+        {% if subjects.count < 3 %} <button type="button" class="btn btn-primary" data-bs-toggle="modal"
+            data-bs-target="#createSubjectModal">
+            + Create Subject
+            </button>
+            {% else %}
+            <button type="button" class="btn btn-secondary" disabled title="You have reached the limit of 3 subjects">
+                Limit Reached (3/3)
+            </button>
+            {% endif %}
+    </div>
+</div>
+
+<div class="row">
+    {% for subject in subjects %}
+    <div class="col-md-4 mb-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">{{ subject.name }}</h5>
+                <p class="card-text text-muted small">Created: {{ subject.created_at|date:"M d, Y" }}</p>
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <span class="badge bg-info text-dark">{{ subject.notes.count }} Notes</span>
+                    <a href="{% url 'subject_detail' subject.id %}" class="btn btn-outline-primary btn-sm">Open
+                        Subject</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12 text-center py-5">
+        <h4 class="text-muted">No subjects created yet.</h4>
+        <p>Create your first subject to start uploading notes and chatting with AI!</p>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Create Subject Modal -->
+<div class="modal fade" id="createSubjectModal" tabindex="-1" aria-labelledby="createSubjectModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'dashboard' %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="createSubjectModalLabel">Create New Subject</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="subjectName" class="form-label">Subject Name</label>
+                        <input type="text" class="form-control" id="subjectName" name="name" required maxlength="100"
+                            placeholder="e.g. Biology 101">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Subject</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

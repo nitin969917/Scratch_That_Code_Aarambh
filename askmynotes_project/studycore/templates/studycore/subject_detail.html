@@ -1,0 +1,202 @@
+{% extends 'studycore/base.html' %}
+
+{% block title %}{{ subject.name }} | AskMyNotes{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12 d-flex justify-content-between align-items-center">
+        <h2>{{ subject.name }}</h2>
+        <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">← Back to Dashboard</a>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Left Column: Notes & Upload -->
+    <div class="col-md-4 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Notes</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'upload_note' subject.id %}" enctype="multipart/form-data"
+                    class="mb-4">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="noteFile" class="form-label text-muted small">Upload PDF or TXT</label>
+                        <input class="form-control form-control-sm" type="file" id="noteFile" name="file"
+                            accept=".pdf,.txt" required>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary w-100" id="uploadBtn">
+                        <span class="spinner-border spinner-border-sm d-none" id="uploadSpinner" role="status"
+                            aria-hidden="true"></span>
+                        Upload & Process
+                    </button>
+                    <div class="form-text small" id="uploadStatus"></div>
+                </form>
+
+                <h6 class="text-muted small">Uploaded Files ({{ subject.notes.count }})</h6>
+                <ul class="list-group list-group-flush small" style="max-height: 250px; overflow-y: auto;">
+                    {% for note in subject.notes.all %}
+                    <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                        <span class="text-truncate" title="{{ note.filename }}">{{ note.filename }}</span>
+                        <span class="badge bg-light text-secondary">{{ note.uploaded_at|date:"M d" }}</span>
+                    </li>
+                    {% empty %}
+                    <li class="list-group-item px-0 text-muted border-0">No notes uploaded yet.</li>
+                    {% endfor %}
+                </ul>
+
+                {% if subject.notes.count > 0 %}
+                <hr>
+                <a href="{% url 'study_mode' subject.id %}" class="btn btn-warning w-100">
+                    Brain Quiz (Study Mode)
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Chat Interface -->
+    <div class="col-md-8 mb-4">
+        <div class="card shadow-sm h-100 d-flex flex-column">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">AskMyNotes Chat</h5>
+                <span class="badge bg-success" id="chatStatus">Ready</span>
+            </div>
+            <div class="card-body flex-grow-1" id="chatWindow"
+                style="height: 400px; overflow-y: auto; background-color: #f8f9fa;">
+                <div class="text-center text-muted my-4" id="emptyChatPlaceholder">
+                    Ask a question to start exploring your notes about {{ subject.name }}!
+                </div>
+            </div>
+            <div class="card-footer bg-white">
+                <form id="chatForm">
+                    <div class="input-group">
+                        {% if not subject.notes.exists %}
+                        <input type="text" id="chatInput" class="form-control" placeholder="Ask a question..." disabled>
+                        <button class="btn btn-primary" type="submit" id="chatSend" disabled>Send</button>
+                        {% else %}
+                        <input type="text" id="chatInput" class="form-control" placeholder="Ask a question...">
+                        <button class="btn btn-primary" type="submit" id="chatSend">Send</button>
+                        {% endif %}
+                    </div>
+                    {% if not subject.notes.exists %}
+                    <div class="form-text text-warning small mt-1">Please upload a note first to start chatting.</div>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Handle Chat window logic here
+    const chatForm = document.getElementById('chatForm');
+    const chatInput = document.getElementById('chatInput');
+    const chatWindow = document.getElementById('chatWindow');
+    const chatSend = document.getElementById('chatSend');
+    const chatStatus = document.getElementById('chatStatus');
+    const placeholder = document.getElementById('emptyChatPlaceholder');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const uploadSpinner = document.getElementById('uploadSpinner');
+
+    if (uploadBtn) {
+        uploadBtn.closest('form').addEventListener('submit', function () {
+            uploadBtn.classList.add('disabled');
+            uploadSpinner.classList.remove('d-none');
+            document.getElementById('uploadStatus').innerText = "Processing file... This may take a minute.";
+        });
+    }
+
+    function appendMessage(sender, text, citations = null, confidence = null) {
+        if (placeholder) placeholder.style.display = 'none';
+
+        const div = document.createElement('div');
+        div.className = `mb-3 ${sender === 'user' ? 'text-end' : ''}`;
+
+        let innerHtml = `<div class="d-inline-block p-3 rounded shadow-sm ${sender === 'user' ? 'bg-primary text-white' : 'bg-white border text-dark'}" style="max-width: 80%; text-align: left;">`;
+        innerHtml += `<p class="mb-0" style="white-space: pre-wrap;">${text}</p>`;
+
+        if (citations && citations.length > 0) {
+            innerHtml += `<hr class="my-2"><div class="small text-muted fw-bold">Sources:</div><ul class="small text-muted mb-0 ps-3">`;
+            citations.forEach(c => {
+                innerHtml += `<li><strong>${c.filename}</strong> (Page ${c.page}): <em>"...${c.snippet}..."</em></li>`;
+            });
+            innerHtml += `</ul>`;
+        }
+
+        if (confidence) {
+            innerHtml += `<div class="small text-muted mt-1 text-end">Confidence: ${Math.round(confidence)}%</div>`;
+        }
+
+        innerHtml += `</div>`;
+        div.innerHTML = innerHtml;
+        chatWindow.appendChild(div);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+    }
+
+    if (chatForm) {
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = chatInput.value.trim();
+            if (!query) return;
+
+            // Optional: Check if we have notes uploaded
+            {% if not subject.notes.exists %}
+            alert("Upload notes first!");
+            return;
+            {% endif %}
+
+            // Append User msg
+            appendMessage('user', query);
+            chatInput.value = '';
+            chatSend.disabled = true;
+            chatStatus.innerText = 'Thinking...';
+            chatStatus.className = 'badge bg-warning text-dark';
+
+            try {
+                const res = await fetch("{% url 'subject_chat' subject.id %}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({ query: query })
+                });
+
+                if (!res.ok) {
+                    throw new Error('Server error');
+                }
+
+                const data = await res.json();
+                appendMessage('ai', data.response, data.citations, data.confidence);
+
+            } catch (err) {
+                appendMessage('ai', "Sorry, an error occurred while processing your request.");
+            } finally {
+                chatSend.disabled = false;
+                chatStatus.innerText = 'Ready';
+                chatStatus.className = 'badge bg-success';
+                chatInput.focus();
+            }
+        });
+    }
+
+    // Load history on load
+    window.addEventListener('DOMContentLoaded', async () => {
+        try {
+            const res = await fetch("{% url 'subject_chat_history' subject.id %}");
+            if (res.ok) {
+                const data = await res.json();
+                if (data.history.length > 0 && placeholder) placeholder.style.display = 'none';
+                data.history.forEach(msg => {
+                    appendMessage('user', msg.query);
+                    appendMessage('ai', msg.response, msg.citations, msg.confidence);
+                });
+            }
+        } catch (e) { console.error('Error loading history'); }
+    });
+</script>
+{% endblock %}

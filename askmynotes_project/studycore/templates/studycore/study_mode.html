@@ -1,0 +1,67 @@
+{% extends 'studycore/base.html' %}
+
+{% block title %}Study Mode | {{ subject.name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12 d-flex justify-content-between align-items-center">
+        <h2>Brain Quiz: {{ subject.name }}</h2>
+        <a href="{% url 'subject_detail' subject.id %}" class="btn btn-outline-secondary">← Back to Subject</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <p>Ready to test your knowledge? Ensure you have reviewed your notes before taking this AI-generated
+                    quiz, based solely on your uploaded material.</p>
+                <div id="quizContainer">
+                    <button class="btn btn-lg btn-success w-100" id="generateQuizBtn">
+                        <span class="spinner-border spinner-border-sm d-none" id="quizSpinner" role="status"
+                            aria-hidden="true"></span>
+                        Generate Quiz Now (5 MCQs, 3 Short-Answer)
+                    </button>
+                    <div id="quizContent" class="mt-4" style="display:none; white-space:pre-wrap;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('generateQuizBtn').addEventListener('click', async (e) => {
+        const btn = e.target;
+        const spinner = document.getElementById('quizSpinner');
+        const content = document.getElementById('quizContent');
+
+        btn.classList.add('disabled');
+        spinner.classList.remove('d-none');
+        btn.innerHTML = btn.innerHTML.replace('Generate Quiz Now', 'Generating (This may take a minute)...');
+
+        try {
+            const res = await fetch("{% url 'generate_quiz' subject.id %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({})
+            });
+            const data = await res.json();
+
+            content.style.display = 'block';
+            content.innerHTML = `<strong>Quiz Generated!</strong><br><br>${data.response}`;
+            btn.style.display = 'none'; // hide the button after generation
+        } catch (err) {
+            content.style.display = 'block';
+            content.innerHTML = `<span class="text-danger">Failed to generate quiz. Try again later.</span>`;
+            btn.classList.remove('disabled');
+            spinner.classList.add('d-none');
+            btn.innerText = 'Generate Quiz Now';
+        }
+    });
+</script>
+{% endblock %}
