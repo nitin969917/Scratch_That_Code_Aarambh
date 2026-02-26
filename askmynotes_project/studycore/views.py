@@ -346,6 +346,7 @@ def subject_chat(request, subject_id):
     try:
         data = json.loads(request.body)
         query = data.get('query', '')
+        session_id = data.get('session_id', None)
     except Exception:
         return JsonResponse({'error': 'Invalid JSON data'}, status=400)
         
@@ -363,13 +364,24 @@ def subject_chat(request, subject_id):
     # Check if anything was returned
     if not results:
         fallback = f"Not found in your notes for {subject.name}."
-        ChatMessage.objects.create(subject=subject, query=query, response=fallback)
+        ChatMessage.objects.create(subject=subject, session_id=session_id, query=query, response=fallback)
         return JsonResponse({
             'response': fallback,
             'citations': [],
             'confidence': 0.0
         })
         
+    # Retrieve Conversation History (Last 3 exchanges)
+    history_text = "None"
+    if session_id:
+        # Retrieve the last 3 messages for this session, ordered by timestamp descending, then reverse them for chronological order
+        recent_history = ChatMessage.objects.filter(subject=subject, session_id=session_id).order_by('-timestamp')[:3]
+        recent_history = list(reversed(recent_history))
+        if recent_history:
+            history_text = ""
+            for msg in recent_history:
+                history_text += f"\nStudent: {msg.query}\nAI: {msg.response}\n"
+    
     # Build context string and extract citations
     context_text = ""
     citations = []
@@ -400,8 +412,12 @@ def subject_chat(request, subject_id):
     template = """You are a helpful study AI assistant. I will provide you with some context from my notes for the subject '{subject_name}'.
     
 Read the notes carefully, and answer my question ONLY using the provided context.
+If the student asks a follow-up question, use the Conversation History to understand what they are referring to.
 If you cannot find the answer to my question within the context, you MUST reply exactly with the phrase:
 "Not found in your notes for {subject_name}." No exceptions. 
+
+Conversation History:
+{history}
 
 Context:
 {context}
@@ -414,6 +430,7 @@ Answer:"""
     prompt = PromptTemplate.from_template(template)
     filled_prompt = prompt.format(
         subject_name=subject.name,
+        history=history_text,
         context=context_text,
         question=query
     )
@@ -434,6 +451,7 @@ Answer:"""
     # Save the interaction
     ChatMessage.objects.create(
         subject=subject,
+        session_id=session_id,
         query=query,
         response=answer
     )

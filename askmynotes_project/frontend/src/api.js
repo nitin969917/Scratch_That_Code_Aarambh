@@ -25,7 +25,7 @@ export const uploadNote = (id, file) => {
     });
 };
 
-export const sendChatMessage = (id, query) => api.post(`/subject/${id}/chat/`, { query });
+export const sendChatMessage = (id, query, session_id) => api.post(`/subject/${id}/chat/`, { query, session_id });
 export const getChatHistory = (id) => api.get(`/subject/${id}/chat/history/`);
 export const generateQuiz = (id, mcqCount = 5, shortCount = 3) =>
     api.post(`/subject/${id}/generate-quiz/?mcq_count=${mcqCount}&short_count=${shortCount}`);

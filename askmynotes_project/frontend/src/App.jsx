@@ -12,7 +12,11 @@ import {
   AlertCircle,
   FileText,
   Loader2,
-  X
+  X,
+  Mic,
+  Activity,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as api from './api';
@@ -35,6 +39,11 @@ const App = () => {
   const [userAnswers, setUserAnswers] = useState({});
   const [mcqCount, setMcqCount] = useState(5);
   const [shortCount, setShortCount] = useState(3);
+
+  const [sessionId, setSessionId] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
+  const recognitionRef = useRef(null);
 
   const [authState, setAuthState] = useState('loading'); // loading, unauthenticated, authenticated
   const [currentUser, setCurrentUser] = useState(null);
@@ -103,6 +112,8 @@ const App = () => {
     if (selectedSubject) {
       fetchNotes(selectedSubject.id);
       fetchChatHistory(selectedSubject.id);
+      setSessionId(Math.random().toString(36).substring(2, 15)); // Unique session for memory
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
       setQuizResponse(null);
       setQuizStep('landing');
       setCurrentQuestionIdx(0);
@@ -195,6 +206,63 @@ const App = () => {
     }
   };
 
+  const speakText = (text, confidence) => {
+    if (!isVoiceEnabled || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+
+    // Clean text for speech
+    const cleanText = text.replace(/[*#_]/g, '');
+    let fullSpeech = cleanText;
+
+    if (confidence !== undefined && confidence !== null && confidence > 0) {
+      fullSpeech += `. Confidence level is ${Math.round(confidence)} percent.`;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(fullSpeech);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const startListening = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setError("Speech Recognition is not supported in this browser.");
+      return;
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) recognitionRef.current.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognitionRef.current = recognition;
+
+    recognition.onstart = () => setIsListening(true);
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setChatInput(transcript);
+
+      const lowerTranscript = transcript.toLowerCase();
+      if (lowerTranscript.includes("start the quiz") || lowerTranscript.includes("start quiz")) {
+        setActiveTab('study');
+        handleGenerateQuiz();
+      }
+    };
+
+    recognition.onerror = (event) => {
+      console.error("Speech error", event.error);
+      setIsListening(false);
+    };
+
+    recognition.onend = () => setIsListening(false);
+    recognition.start();
+  };
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!chatInput.trim() || !selectedSubject || isThinking) return;
@@ -205,13 +273,14 @@ const App = () => {
     setIsThinking(true);
 
     try {
-      const res = await api.sendChatMessage(selectedSubject.id, query);
+      const res = await api.sendChatMessage(selectedSubject.id, query, sessionId);
       setMessages(prev => [...prev, {
         type: 'bot',
         content: res.data.response,
         citations: res.data.citations,
         confidence: res.data.confidence
       }]);
+      speakText(res.data.response, res.data.confidence);
     } catch (err) {
       setMessages(prev => [...prev, { type: 'bot', content: "Error communicating with AI." }]);
     } finally {
@@ -610,6 +679,16 @@ const App = () => {
                 </div>
               </div>
               <div className="flex gap-4">
+                <button
+                  onClick={() => {
+                    setIsVoiceEnabled(!isVoiceEnabled);
+                    if (isVoiceEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
+                  }}
+                  className="p-2 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-all bg-white/5"
+                  title={isVoiceEnabled ? "Mute Voice Tutor" : "Enable Voice Tutor"}
+                >
+                  {isVoiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+                </button>
                 <label className="gradient-btn cursor-pointer py-2 px-4 text-sm font-medium">
                   {isUploading ? <Loader2 className="animate-spin" size={16} /> : <Upload size={16} />}
                   Upload Notes
@@ -867,15 +946,24 @@ const App = () => {
               <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-full max-w-3xl px-8">
                 <form
                   onSubmit={handleSendMessage}
-                  className="glass-card p-2 flex items-center gap-2 shadow-2xl"
+                  className="glass-card p-2 flex items-center gap-2 shadow-2xl relative"
                 >
+                  <button
+                    type="button"
+                    onClick={startListening}
+                    disabled={isThinking || !notes.length}
+                    className={`w-12 h-12 flex flex-shrink-0 items-center justify-center rounded-2xl transition-all ${isListening ? 'bg-red-500/20 text-red-500 animate-pulse' : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'}`}
+                    title="Voice Input (STT)"
+                  >
+                    {isListening ? <Activity size={20} /> : <Mic size={20} />}
+                  </button>
                   <input
                     type="text"
-                    placeholder="Ask about CCN.pdf..."
+                    placeholder="Ask about your notes..."
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     disabled={isThinking || !notes.length}
-                    className="flex-1 bg-transparent px-6 py-3 focus:outline-none text-sm placeholder:text-slate-600"
+                    className="flex-1 min-w-0 bg-transparent px-4 py-3 focus:outline-none text-sm placeholder:text-slate-600"
                   />
                   <button
                     type="submit"
