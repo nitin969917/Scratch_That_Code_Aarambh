@@ -164,33 +164,61 @@ def generate_quiz(request, subject_id):
     if not full_text.strip():
         return JsonResponse({'error': 'No notes available to generate a quiz.'}, status=400)
     
-    template = """You are a professor. Based on the following study material for the subject '{subject_name}', generate a comprehensive quiz.
+    template = """You are a professor. Based on the following study material for the subject '{subject_name}', generate a comprehensive quiz in JSON format.
     
-The quiz must contain:
-1. Exactly 5 Multiple Choice Questions (MCQs) with 4 options (A, B, C, D).
+The JSON must be a list of objects, where each object represents a question:
+{{
+  "questions": [
+    {{
+      "id": 1,
+      "type": "mcq",
+      "question": "Question text here?",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "answer": "Option B",
+      "explanation": "A brief explanation of why Option B is correct."
+    }},
+    {{
+      "id": 6,
+      "type": "short",
+      "question": "Question text here?",
+      "answer": "Expected key concepts or sample model answer"
+    }}
+  ]
+}}
+
+Requirements:
+1. Exactly 5 Multiple Choice Questions (MCQs) with 4 options.
 2. Exactly 3 Short-Answer Questions.
+3. For MCQs, provide a clear 'explanation' field.
+4. For Short-Answer questions, provide a comprehensive 'answer' (model answer).
+5. Return ONLY the raw JSON string.
 
 Material:
 {context}
 
-Format your response clearly. Use bold titles for questions. Provide the answer key at the bottom.
-
-Quiz:"""
+Quiz JSON:"""
 
     prompt = PromptTemplate.from_template(template)
     filled_prompt = prompt.format(
         subject_name=subject.name,
-        context=full_text[:15000], # Limit context to avoid context window issues with Ollama if notes are massive
-        question="" # Not used but template might expect it if shared
+        context=full_text[:15000],
+        question="" 
     )
     
     try:
         llm = OllamaLLM(model="llama3.2")
-        answer = llm.invoke(filled_prompt)
+        raw_response = llm.invoke(filled_prompt)
+        # Try to parse JSON to ensure it's valid
+        import re
+        json_match = re.search(r'(\{.*\})', raw_response, re.DOTALL)
+        if json_match:
+            quiz_json = json.loads(json_match.group(1))
+        else:
+            quiz_json = json.loads(raw_response)
     except Exception as e:
-        return JsonResponse({'error': f"LLM error: {str(e)}"}, status=500)
+        return JsonResponse({'error': f"LLM error or JSON parsing error: {str(e)}"}, status=500)
         
-    return JsonResponse({'response': answer})
+    return JsonResponse(quiz_json)
 
 @csrf_exempt
 def subject_chat(request, subject_id):
